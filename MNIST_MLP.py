@@ -1,13 +1,13 @@
 import torch
 import torchvision
 import torch.nn as nn
+from sklearn.model_selection import GridSearchCV
 from torchvision import transforms
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
 import pickle
 import numpy as np
-
 
 import visualization
 
@@ -37,7 +37,6 @@ vgg.classifier = new_classifier
 print(vgg)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 vgg.to(device)
-
 
 def extract_features(data):
     features = []
@@ -82,11 +81,39 @@ x_test = np.array(pickle.load(open("X_test.pickle", "rb")))
 y_test = np.array(pickle.load(open("y_test.pickle", "rb")))
 
 # Create an MLP classifier and fit the model on the training data
-clf = MLPClassifier(hidden_layer_sizes=(512, 256, 10), max_iter=10, random_state=42)
 
-clf.fit(features, labels)
+# 'hidden_layer_sizes': [(50,), (100,), (50, 50), (100, 100)],
+# 'alpha': [0.0001, 0.001, 0.01],
+# 'learning_rate_init': [0.001, 0.01, 0.1],
+# 'solver': ["lbfgs","sgd", "adam"],
+# 'activation': ['identity', 'logistic', 'tanh', 'relu']
+param_grid = {
+    'hidden_layer_sizes': [(256, 10)],
+    'alpha': [0.0001],
+    'learning_rate_init': [0.001],
+    'solver': ["adam"],
+    'activation': ['relu']
+}
+
+clf = MLPClassifier(
+    hidden_layer_sizes=(256, 10),
+    alpha=0.0001,
+    learning_rate_init=0.001,
+    solver='adam',
+    activation='relu',
+    batch_size=100,
+    max_iter=10,
+    verbose=10,
+    random_state=42,
+)
+# grid_search = GridSearchCV(clf, param_grid, cv=2)
+# grid_search.fit(features, labels)
+# grid_search.score(x_test, y_test)
+# print('Best hyperparameters:', grid_search.best_params_)
+
 
 print("Predicting...")
+clf.fit(features, labels)
 val_pred = clf.predict(x_test)
 print("Finding accuracy...")
 print(classification_report(y_test, val_pred))

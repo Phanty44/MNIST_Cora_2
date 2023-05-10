@@ -8,6 +8,7 @@ from sklearn.metrics import classification_report
 
 import Plot
 
+
 class GraphWeaveNet(torch.nn.Module):
     def __init__(self, dataset):
         super(GraphWeaveNet, self).__init__()
@@ -27,7 +28,8 @@ class GraphWeaveNet(torch.nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
-#Optimizer parameters
+
+# Optimizer parameters
 learning_rate = 0.01
 decay = 5e-4
 
@@ -37,7 +39,9 @@ dataset = Planetoid(root='/tmp/cora', name='Cora')
 data = dataset[0].to(device)
 
 model = GraphWeaveNet(dataset).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=decay)
+# optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=decay)
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=decay)
+
 
 def train():
     model.train()
@@ -49,6 +53,7 @@ def train():
     optimizer.step()
     return loss, out
 
+
 def test():
     model.eval()
     out = model(data)
@@ -56,17 +61,19 @@ def test():
     acc = pred[data.test_mask] == data.y[data.test_mask]
     return acc, out
 
+
 losses = []
-for epoch in range(1, 101):
+for epoch in range(1, 501):
     loss, outTrain = train()
     accTab, outTest = test()
     acc = accTab.sum().item() / data.test_mask.sum().item()
     losses.append(loss)
-    print(f'Epoch: {epoch:03d}, Test Acc: {acc:.4f}, Loss: {loss:.4f}')
-    if epoch%100 == 0:
+    if epoch % 50 == 0:
+        print(f'Epoch: {epoch:03d}, Test Acc: {acc:.4f}, Train loss: {loss:.4f}')
+    if epoch % 500 == 0:
         y_pred = outTest.argmax(dim=1)[data.test_mask].detach().numpy()
         y_test = data.y[data.test_mask].detach().numpy()
         print(classification_report(y_test, y_pred))
         Plot.plot_confusion(y_test, y_pred)
 
-Plot.training_loss(losses[1:])
+Plot.training_loss(losses)

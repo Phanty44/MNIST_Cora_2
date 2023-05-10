@@ -130,8 +130,8 @@ def test(model, loader):
 
 losses = []
 for epoch in range(1, 11):
-    loss, output = train(model, optimizer, trainM_loader)
-    y_pred, test_acc = test(model, testM_loader)
+    loss, output = train(model, optimizer, train_loader)
+    y_pred, test_acc = test(model, test_loader)
     print(f'Epoch: {epoch:03d}, Test Acc: {test_acc:.4f}, Loss: {loss:.4f}')
 
     if epoch % 2 == 0:

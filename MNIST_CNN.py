@@ -2,10 +2,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
 from torchmetrics import ConfusionMatrix
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
+
+
+
 
 # Set the device to use for training and testing (either CPU or GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,8 +39,7 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(0.5)
         self.fc1 = nn.Linear(9216, 128)
         self.fc2 = nn.Linear(128, 10)
 
@@ -49,7 +53,6 @@ class Net(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc1(x)
         x = F.relu(x)
-        x = self.dropout2(x)
         x = self.fc2(x)
         output = F.log_softmax(x, dim=1)
         return output
@@ -79,14 +82,12 @@ def test(model, device, test_loader):
     test_loss = 0
     correct = 0
     wrong_predictions = []
-    losses = []
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             loss = F.cross_entropy(output, target)
             test_loss += loss.item() * data.size(0)
-            losses.append(loss.item())
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -102,9 +103,17 @@ def test(model, device, test_loader):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
-    if epoch == 1:
-        print('Confusion Matrix:')
-        print(confusion_matrix.compute().cpu().numpy())
+
+    print('Confusion Matrix:')
+    cm = confusion_matrix.compute().cpu().numpy()
+    print(cm)
+    sns.heatmap(cm, annot=True, fmt='g', cmap='Blues', xticklabels=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                yticklabels=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.show()
+    cm.fill(0)
 
     num_to_display = min(1, len(wrong_predictions))
     for i in range(num_to_display):
@@ -113,24 +122,15 @@ def test(model, device, test_loader):
         plt.title('Predicted: {}, Actual: {}'.format(pred.item(), target.item()))
         plt.show()
 
-    # plot the moving average of the test loss
-    plt.plot(pd.Series(losses).rolling(window=100).mean())
-    plt.title('Test Loss')
-    plt.xlabel('Batch')
-    plt.ylabel('Loss')
-    plt.show()
-
 
 model = Net().to(device)
 
 # Define the optimizer and the learning rate
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Train the neural network for 5 epochs
 train_losses = []
 test_losses = []
 for epoch in range(1, 2):
-
     train(model, device, train_loader, optimizer, epoch)
     test(model, device, test_loader)
     plt.plot(train_losses, label='Training loss')
@@ -140,3 +140,5 @@ for epoch in range(1, 2):
     xticks_labels = [int(label) * 64 for label in xticks]
     plt.xticks(xticks, xticks_labels)
     plt.show()
+
+print(model)

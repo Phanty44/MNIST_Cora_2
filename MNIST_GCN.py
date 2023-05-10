@@ -1,9 +1,11 @@
 import torch
 import torch.nn.functional as F
+from sklearn.metrics import classification_report
 from torch_geometric.datasets import MNISTSuperpixels
-from torch_geometric.nn import GCNConv, global_max_pool
+from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader
 from torchvision import datasets, transforms
+
 
 # Define the Graph Convolutional Network (GCN) architecture
 class GCN(torch.nn.Module):
@@ -19,31 +21,30 @@ class GCN(torch.nn.Module):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
-
-        x = global_max_pool(x, batch)
+        x = F.dropout(x, training=self.training)
+        x = global_mean_pool(x, batch)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
+
 # Load the MNIST dataset as a graph
 train_dataset = MNISTSuperpixels(root='.', train=True)
 test_dataset = MNISTSuperpixels(root='.', train=False)
-print(train_dataset[0])
 
 trainM_dataset = datasets.MNIST('../data', train=True, download=True,
+                                transform=transforms.Compose([
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.5,), (0.5,))
+                                ]))
+
+# Define the test dataset and the data loader
+testM_dataset = datasets.MNIST('../data', train=False,
                                transform=transforms.Compose([
                                    transforms.ToTensor(),
                                    transforms.Normalize((0.5,), (0.5,))
                                ]))
-
-
-# Define the test dataset and the data loader
-testM_dataset = datasets.MNIST('../data', train=False,
-                              transform=transforms.Compose([
-                                  transforms.ToTensor(),
-                                  transforms.Normalize((0.5,), (0.5,))
-                              ]))
 
 trainM_data = []
 for image, label in trainM_dataset:
@@ -96,6 +97,7 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 model = GCN().cuda()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+
 # Train the GCN model
 def train(model, optimizer, train_loader):
     model.train()
@@ -105,6 +107,9 @@ def train(model, optimizer, train_loader):
         loss = F.cross_entropy(out, data.y.cuda())
         loss.backward()
         optimizer.step()
+
+    return loss, out
+
 
 # Evaluate the GCN model on the test set
 def test(model, loader):
@@ -116,8 +121,17 @@ def test(model, loader):
         correct += pred.eq(data.y).sum().item()
     return correct / len(loader.dataset)
 
-for epoch in range(1, 20):
-    train(model, optimizer, trainM_loader)
+losses = []
+for epoch in range(1, 21):
+    loss, output = train(model, optimizer, trainM_loader)
     test_acc = test(model, testM_loader)
     print(f'Epoch: {epoch:03d}, Test Acc: {test_acc:.4f}')
 
+    if epoch%2 == 0:
+        losses.append(loss)
+        y_pred = output.argmax(dim=1)[data.test_mask].detach().numpy()
+        y_test = data.y[data.test_mask].detach().numpy()
+        print(classification_report(y_test, y_pred))
+        Plot.plot_confusion(y_test, y_pred)
+
+Plot.training_loss(losses[1:])

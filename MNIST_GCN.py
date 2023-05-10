@@ -6,8 +6,10 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader
 from torchvision import datasets, transforms
 
-
 # Define the Graph Convolutional Network (GCN) architecture
+import Plot
+
+
 class GCN(torch.nn.Module):
     def __init__(self):
         super(GCN, self).__init__()
@@ -47,6 +49,7 @@ testM_dataset = datasets.MNIST('../data', train=False,
                                ]))
 
 trainM_data = []
+
 for image, label in trainM_dataset:
     edges = []
     for i in range(image.shape[0]):
@@ -64,7 +67,7 @@ for image, label in trainM_dataset:
     x = torch.tensor(image.flatten(), dtype=torch.float).unsqueeze(1)
     data = Data(x=x, edge_index=edge_index, y=label)
     trainM_data.append(data)
-
+y_test = []
 # Convert the entire MNIST test dataset into graph data
 testM_data = []
 for image, label in testM_dataset:
@@ -83,6 +86,7 @@ for image, label in testM_dataset:
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
     x = torch.tensor(image.flatten(), dtype=torch.float).unsqueeze(1)
     data = Data(x=x, edge_index=edge_index, y=label)
+    y_test.append(label)
     testM_data.append(data)
 
 # Create PyTorch Geometric DataLoader objects
@@ -115,23 +119,26 @@ def train(model, optimizer, train_loader):
 def test(model, loader):
     model.eval()
     correct = 0
+    predict = []
     for data in loader:
         out = model(data.cuda())
         pred = out.argmax(dim=1)
         correct += pred.eq(data.y).sum().item()
-    return correct / len(loader.dataset)
+        predict.extend(pred.cpu())
+    return predict, correct / len(loader.dataset)
+
 
 losses = []
-for epoch in range(1, 21):
+for epoch in range(1, 11):
     loss, output = train(model, optimizer, trainM_loader)
-    test_acc = test(model, testM_loader)
-    print(f'Epoch: {epoch:03d}, Test Acc: {test_acc:.4f}')
+    y_pred, test_acc = test(model, testM_loader)
+    print(f'Epoch: {epoch:03d}, Test Acc: {test_acc:.4f}, Loss: {loss:.4f}')
 
-    if epoch%2 == 0:
+    if epoch % 2 == 0:
         losses.append(loss)
-        y_pred = output.argmax(dim=1)[data.test_mask].detach().numpy()
-        y_test = data.y[data.test_mask].detach().numpy()
+
+    if epoch == 10:
         print(classification_report(y_test, y_pred))
         Plot.plot_confusion(y_test, y_pred)
+        Plot.training_loss(losses[1:])
 
-Plot.training_loss(losses[1:])

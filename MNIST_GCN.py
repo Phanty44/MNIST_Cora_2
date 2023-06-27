@@ -1,8 +1,10 @@
+import pickle
+
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import classification_report
 from torch_geometric.datasets import MNISTSuperpixels
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, SplineConv
 from torch_geometric.data import Data, DataLoader
 from torchvision import datasets, transforms
 
@@ -13,8 +15,8 @@ import Plot
 class GCN(torch.nn.Module):
     def __init__(self):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(1, 64)
-        self.conv2 = GCNConv(64, 128)
+        self.conv1 = SplineConv(1, 64, dim=2, kernel_size=5)
+        self.conv2 = SplineConv(64, 128, dim=2, kernel_size=5)
 
         self.fc1 = torch.nn.Linear(128, 64)
         self.fc2 = torch.nn.Linear(64, 10)
@@ -49,8 +51,9 @@ testM_dataset = datasets.MNIST('../data', train=False,
                                ]))
 
 trainM_data = []
-
 for image, label in trainM_dataset:
+    image = image[0]
+    pos = []
     edges = []
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
@@ -63,14 +66,18 @@ for image, label in trainM_dataset:
                 edges.append([node_id, node_id + image.shape[1]])
             if j < image.shape[1] - 1:
                 edges.append([node_id, node_id + 1])
+            pos.append([i, j])
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
     x = torch.tensor(image.flatten(), dtype=torch.float).unsqueeze(1)
-    data = Data(x=x, edge_index=edge_index, y=label)
+    data = Data(x=x, edge_index=edge_index, y=label, pos=torch.tensor(pos, dtype=torch.int))
     trainM_data.append(data)
-y_test = []
+
 # Convert the entire MNIST test dataset into graph data
+y_test = []
 testM_data = []
 for image, label in testM_dataset:
+    image = image[0]
+    pos = []
     edges = []
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
@@ -83,12 +90,27 @@ for image, label in testM_dataset:
                 edges.append([node_id, node_id + image.shape[1]])
             if j < image.shape[1] - 1:
                 edges.append([node_id, node_id + 1])
+            pos.append([i, j])
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
     x = torch.tensor(image.flatten(), dtype=torch.float).unsqueeze(1)
-    data = Data(x=x, edge_index=edge_index, y=label)
+    data = Data(x=x, edge_index=edge_index, y=label, pos=torch.tensor(pos, dtype=torch.int))
     y_test.append(label)
     testM_data.append(data)
 
+pickle_out = open("Test_GCN.pickle", "wb")
+pickle.dump(testM_data, pickle_out)
+pickle_out.close()
+
+pickle_out = open("Train_GCN.pickle", "wb")
+pickle.dump(trainM_data, pickle_out)
+pickle_out.close()
+
+pickle_out = open("Y_Test_GCN.pickle", "wb")
+pickle.dump(y_test, pickle_out)
+pickle_out.close()
+
+print(testM_data[0])
+print(testM_data[0].pos)
 # Create PyTorch Geometric DataLoader objects
 trainM_loader = DataLoader(trainM_data, batch_size=64, shuffle=True)
 testM_loader = DataLoader(testM_data, batch_size=64, shuffle=False)
@@ -98,7 +120,7 @@ train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # Initialize the GCN model and optimizer
-model = GCN().cuda()
+model = GCN()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 
@@ -107,8 +129,8 @@ def train(model, optimizer, train_loader):
     model.train()
     for data in train_loader:
         optimizer.zero_grad()
-        out = model(data.cuda())
-        loss = F.cross_entropy(out, data.y.cuda())
+        out = model(data)
+        loss = F.cross_entropy(out, data.y)
         loss.backward()
         optimizer.step()
 
@@ -121,7 +143,7 @@ def test(model, loader):
     correct = 0
     predict = []
     for data in loader:
-        out = model(data.cuda())
+        out = model(data)
         pred = out.argmax(dim=1)
         correct += pred.eq(data.y).sum().item()
         predict.extend(pred.cpu())
